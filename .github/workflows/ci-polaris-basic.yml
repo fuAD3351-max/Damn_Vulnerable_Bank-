@@ -4,8 +4,6 @@ on:
   workflow_dispatch:
   push:
     branches: [ polaris ]
-  # pull_request:
-  #   branches: [ develop ]
 
 env:
   BRIDGE_POLARIS_WAITFORSCAN: true
@@ -23,6 +21,18 @@ jobs:
         distribution: "temurin"
         java-version: "17"
 
+    # Fixes the "Build command not found. 'gradle'" error from Coverity.
+    # $GITHUB_PATH adds the directory to the PATH for all subsequent steps in the job.
+    - name: Add Gradle to PATH
+      run: echo "/opt/gradle/gradle-7.6.4/bin" >> "$GITHUB_PATH"
+
+    # Fixes the "FAILURE_ACCURACY_NOT_MET" error from Detect.
+    # Installs packages from requirements.txt so the PIP inspector can resolve them.
+    - name: Install Python dependencies
+      uses: py-actions/py-dependency-install@v4
+      with:
+        path: "requirements.txt"
+
     - name: Polaris Scan
       id: polaris-scan
       uses: blackduck-inc/black-duck-security-scan@v2
@@ -35,47 +45,11 @@ jobs:
         blackducksca_scan_failure_severities: 'BLOCKER,CRITICAL,HIGH'
 
         polaris_waitForScan: true
-        additional_bridgecli_params: "--break-on-policy-failure=true"
-
-        ### Binary scan: requires polaris_assessment_types set to SCA only
-        # polaris_test_sca_type: "SCA-BINARY"
-        # polaris_artifactToUpload: "/path/to/binary-file"
-
-        ### SCA container scan: requires polaris_assessment_types set to SCA only
-        # polaris_test_sca_type: 'SCA-CONTAINER'
-        # polaris_artifactToUpload: '/path/to/container.tar.gz'
-        # polaris_container_name: 'unique-container-name'
 
         ### SCANNING: Optional fields
         polaris_application_name: ${{ github.event.repository.name }}
         polaris_project_name: ${{ github.event.repository.name }}
         polaris_branch_name: "develop"
 
-        ### PULL REQUEST COMMENTS
-        # polaris_prComment_enabled: true
-        # github_token: ${{ secrets.GITHUB_TOKEN }}
-
-        ### FIX PR
-        # polaris_fixpr_enabled: true
-        # github_token: ${{ secrets.GITHUB_TOKEN }}
-
-        ### GitHub Issues
-        # polaris_externalIssues_create: true
-        # github_token: ${{ secrets.GITHUB_TOKEN }}
-
-        ### SARIF report parameters
-        # polaris_reports_sarif_create: true
-        # polaris_upload_sarif_report: true
-
-        ### Signature scan
-        # polaris_test_sca_type: "SCA-SIGNATURE"
-
         ### Mark build status if policy violating issues are found
         mark_build_status: 'success'
-
-        ### Custom logic based on return status
-        # - name: cmdLine
-        #   id: cmdLine
-        #   run: |
-        #     EXIT_CODE=${{ steps.polaris-scan.outputs.status }}
-        #     echo "Polaris Scan exit status - $EXIT_CODE"
