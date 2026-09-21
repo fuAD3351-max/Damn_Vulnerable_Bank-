@@ -21,18 +21,23 @@ jobs:
         distribution: "temurin"
         java-version: "17"
 
-    # Add the manually installed Gradle to PATH for Coverity
+    # Add the manually installed Gradle to PATH for Coverity.
+    # Points to the user-owned copy to avoid the /opt permission issues.
     - name: Add Gradle to PATH
       run: echo "/home/sechard/tools/gradle-7.6.4/bin" >> "$GITHUB_PATH"
 
-    # Setup Android SDK for SAST to build the project successfully
+    # Setup Android SDK for SAST so Coverity can build the Android project.
+    # Uses the official Android setup action (floating v4 tag is maintained).
+    # Adjust the "platforms;android-XX" and "build-tools;XX.0.0" to match
+    # the compileSdkVersion in DamnVulnerableBank/app/build.gradle.
     - name: Setup Android SDK
-      uses: amyu/setup-android@v6
+      uses: android-actions/setup-android@v4
       with:
-        sdk-version: '34' # Adjust this to match your project's compileSdkVersion
-        build-tools-version: '34.0.0' # Optional: match your project if needed
+        packages: 'platforms;android-34 build-tools;34.0.0'
 
-    # Install Python dependencies for SCA
+    # Install Python dependencies for SCA.
+    # Pinning setuptools<71.0.0 avoids the Python 3.8 incompatibility
+    # that caused "importlib_metadata has no attribute EntryPoints".
     - name: Install Python dependencies
       run: |
         python -m pip install --upgrade pip
