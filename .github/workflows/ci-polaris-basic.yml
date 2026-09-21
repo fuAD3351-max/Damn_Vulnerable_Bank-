@@ -21,12 +21,18 @@ jobs:
         distribution: "temurin"
         java-version: "17"
 
-    # Fixes the "Build command not found. 'gradle'" error from Coverity.
+    # Add the manually installed Gradle to PATH for Coverity
     - name: Add Gradle to PATH
-      run: echo "/opt/gradle/gradle-7.6.4/bin" >> "$GITHUB_PATH"
+      run: echo "/home/sechard/tools/gradle-7.6.4/bin" >> "$GITHUB_PATH"
 
-    # Fixes the "importlib_metadata has no attribute 'EntryPoints'" error
-    # and the "FAILURE_ACCURACY_NOT_MET" error from Detect.
+    # Setup Android SDK for SAST to build the project successfully
+    - name: Setup Android SDK
+      uses: amyu/setup-android@v6
+      with:
+        sdk-version: '34' # Adjust this to match your project's compileSdkVersion
+        build-tools-version: '34.0.0' # Optional: match your project if needed
+
+    # Install Python dependencies for SCA
     - name: Install Python dependencies
       run: |
         python -m pip install --upgrade pip
@@ -51,5 +57,5 @@ jobs:
         polaris_project_name: ${{ github.event.repository.name }}
         polaris_branch_name: "develop"
 
-        ### Mark build status if policy violating issues are found
-        mark_build_status: 'success'
+        ### Enforce policy violations to break the pipeline
+        mark_build_status: 'failure'
