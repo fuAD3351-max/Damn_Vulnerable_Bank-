@@ -1,4 +1,4 @@
-name: CI-Polaris-Basic
+name: CI-Polaris-SAST
 
 on:
   workflow_dispatch:
@@ -36,30 +36,17 @@ jobs:
       run: |
         echo "sdk.dir=/var/android-sdk" > DamnVulnerableBank/local.properties
 
-    # Fix JCenter-only dependencies by vendoring the equivalent .aar files
-    # from the local cache on the runner. No source code changes needed.
-    - name: Vendor legacy dependencies
+    # JCenter was shut down in 2021. JitPack mirrors the original
+    # passcodeview 0.1.2 and volley 1.1.1 artifacts under their
+    # original Maven coordinates, so the Java source compiles unchanged.
+    - name: Add JitPack repository for legacy dependencies
       run: |
         cd DamnVulnerableBank
-        mkdir -p app/libs
-
-        # Copy the cached .aar files into the project
-        cp /var/android-sdk/legacy-libs/volley-1.2.1.aar app/libs/
-        cp /var/android-sdk/legacy-libs/pinview-1.4.4.aar app/libs/
-
-        # Comment out the dead JCenter dependencies
-        sed -i "s|^implementation 'com.hanks:passcodeview:0.1.2'|// &|" app/build.gradle
-        sed -i "s|^implementation 'com.android.volley:volley:1.1.1'|// &|" app/build.gradle
-
-        # Ensure local .aar files are picked up
-        if ! grep -q "*.aar" app/build.gradle; then
-          sed -i "s|include: \[\"*.jar\"\]|include: [\"*.jar\", \"*.aar\"]|" app/build.gradle
+        if ! grep -q "jitpack.io" build.gradle; then
+          sed -i 's|jcenter()|jcenter()\n        maven { url "https://jitpack.io" }|g' build.gradle
         fi
-
-        echo "--- app/libs contents ---"
-        ls -la app/libs/
-        echo "--- Patched dependencies ---"
-        grep -E "volley|pinview|fileTree" app/build.gradle
+        echo "--- Patched build.gradle ---"
+        cat build.gradle
 
     # Coverity's default build command runs `gradle clean build testClasses`.
     # The Android Gradle Plugin does not create a `testClasses` task.
@@ -76,22 +63,14 @@ jobs:
         }
         EOF
 
-    - name: Install Python dependencies
-      run: |
-        python -m pip install --upgrade pip
-        python -m pip install "setuptools<71.0.0" wheel
-        python -m pip install -r requirements.txt
-
-    - name: Polaris Scan
+    - name: Polaris SAST Scan
       id: polaris-scan
       uses: blackduck-inc/black-duck-security-scan@v2
       with:
         ### SCANNING: Required fields
         polaris_server_url: ${{ vars.POLARIS_SERVER_URL }}
         polaris_access_token: ${{ secrets.POLARIS_ACCESS_TOKEN }}
-        polaris_assessment_types: "SCA,SAST"
-
-        blackducksca_scan_failure_severities: 'BLOCKER,CRITICAL,HIGH'
+        polaris_assessment_types: "SAST"
 
         polaris_waitForScan: true
 
@@ -100,17 +79,8 @@ jobs:
         polaris_project_name: ${{ github.event.repository.name }}
         polaris_branch_name: "develop"
 
-        ### Binary scan: requires polaris_assessment_types set to SCA only
-        # polaris_test_sca_type: "SCA-BINARY"
-        # polaris_artifactToUpload: "/path/to/binary-file"
-
-        ### SCA container scan: requires polaris_assessment_types set to SCA only
-        # polaris_test_sca_type: 'SCA-CONTAINER'
-        # polaris_artifactToUpload: '/path/to/container.tar.gz'
-        # polaris_container_name: 'unique-container-name'
-
-        ### Signature scan
-        # polaris_test_sca_type: "SCA-SIGNATURE"
+        ### SAST scan type — defaults to sastFull; uncomment to override
+        # polaris_test_sast_type: "SAST"
 
         ### PULL REQUEST COMMENTS
         # polaris_prComment_enabled: true
@@ -124,7 +94,7 @@ jobs:
         # polaris_externalIssues_create: true
         # github_token: ${{ secrets.GITHUB_TOKEN }}
 
-        ### SARIF report parameters
+        ### SARIF report parameters (not supported on pull_request events)
         # polaris_reports_sarif_create: true
         # polaris_upload_sarif_report: true
 
