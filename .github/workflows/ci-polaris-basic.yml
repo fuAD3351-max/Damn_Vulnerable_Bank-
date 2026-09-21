@@ -4,8 +4,6 @@ on:
   workflow_dispatch:
   push:
     branches: [ polaris ]
-  # pull_request:
-  #   branches: [ develop ]
 
 env:
   BRIDGE_POLARIS_WAITFORSCAN: true
@@ -37,25 +35,46 @@ jobs:
     - name: Write local.properties
       run: |
         echo "sdk.dir=/var/android-sdk" > DamnVulnerableBank/local.properties
-        cat DamnVulnerableBank/local.properties
+
+    # Fix JCenter-only dependencies by vendoring the equivalent .aar files
+    # from the local cache on the runner. No source code changes needed.
+    - name: Vendor legacy dependencies
+      run: |
+        cd DamnVulnerableBank
+        mkdir -p app/libs
+
+        # Copy the cached .aar files into the project
+        cp /var/android-sdk/legacy-libs/volley-1.2.1.aar app/libs/
+        cp /var/android-sdk/legacy-libs/pinview-1.4.4.aar app/libs/
+
+        # Comment out the dead JCenter dependencies
+        sed -i "s|^implementation 'com.hanks:passcodeview:0.1.2'|// &|" app/build.gradle
+        sed -i "s|^implementation 'com.android.volley:volley:1.1.1'|// &|" app/build.gradle
+
+        # Ensure local .aar files are picked up
+        if ! grep -q "*.aar" app/build.gradle; then
+          sed -i "s|include: \[\"*.jar\"\]|include: [\"*.jar\", \"*.aar\"]|" app/build.gradle
+        fi
+
+        echo "--- app/libs contents ---"
+        ls -la app/libs/
+        echo "--- Patched dependencies ---"
+        grep -E "volley|pinview|fileTree" app/build.gradle
 
     # Coverity's default build command runs `gradle clean build testClasses`.
     # The Android Gradle Plugin does not create a `testClasses` task.
-    # This stub makes that task exist so the build succeeds.
     - name: Add testClasses Task Stub
       run: |
-        cat >> DamnVulnerableBank/app/build.gradle << 'EOF'
+        cd DamnVulnerableBank
+        cat >> app/build.gradle << 'EOF'
 
-        // Stub task for Coverity SAST — the Android Gradle Plugin does not
-        // create a `testClasses` task, but Coverity's default build command
-        // expects one. This empty task satisfies that requirement.
+        // Stub task for Coverity SAST
         tasks.register("testClasses") {
             doLast {
                 println "Coverity stub: testClasses invoked"
             }
         }
         EOF
-        tail -20 DamnVulnerableBank/app/build.gradle
 
     - name: Install Python dependencies
       run: |
@@ -71,7 +90,9 @@ jobs:
         polaris_server_url: ${{ vars.POLARIS_SERVER_URL }}
         polaris_access_token: ${{ secrets.POLARIS_ACCESS_TOKEN }}
         polaris_assessment_types: "SCA,SAST"
+
         blackducksca_scan_failure_severities: 'BLOCKER,CRITICAL,HIGH'
+
         polaris_waitForScan: true
 
         ### SCANNING: Optional fields
