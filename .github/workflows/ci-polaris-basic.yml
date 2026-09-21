@@ -4,6 +4,8 @@ on:
   workflow_dispatch:
   push:
     branches: [ polaris ]
+  # pull_request:
+  #   branches: [ develop ]
 
 env:
   BRIDGE_POLARIS_WAITFORSCAN: true
@@ -24,12 +26,14 @@ jobs:
 
     # Add the manually installed Gradle to PATH for Coverity.
     # Points to the user-owned copy to avoid /opt permission issues.
+    # Comment this step out if Gradle is already on PATH system-wide.
     - name: Add Gradle to PATH
       run: echo "/home/sechard/tools/gradle-7.6.4/bin" >> "$GITHUB_PATH"
 
     # Setup Android SDK for SAST so Coverity can build the Android project.
     # Adjust "platforms;android-XX" and "build-tools;XX.0.0" to match the
-    # compileSdkVersion in DamnVulnerableBank/app/build.gradle.
+    # compileSdkVersion in your app/build.gradle (e.g., android-33, android-35).
+    # Comment out this step if you only run SCA or use a non-Android project.
     - name: Setup Android SDK
       uses: android-actions/setup-android@v4
       with:
@@ -38,6 +42,7 @@ jobs:
     # Install Python dependencies for SCA.
     # Pinning setuptools<71.0.0 avoids the Python 3.8 incompatibility that
     # caused "importlib_metadata has no attribute EntryPoints".
+    # Comment out this step if your project has no requirements.txt.
     - name: Install Python dependencies
       run: |
         python -m pip install --upgrade pip
@@ -62,5 +67,42 @@ jobs:
         polaris_project_name: ${{ github.event.repository.name }}
         polaris_branch_name: "develop"
 
-        ### Enforce policy violations to break the pipeline
+        ### Binary scan: requires polaris_assessment_types set to SCA only
+        # polaris_test_sca_type: "SCA-BINARY"
+        # polaris_artifactToUpload: "/path/to/binary-file"
+
+        ### SCA container scan: requires polaris_assessment_types set to SCA only
+        # polaris_test_sca_type: 'SCA-CONTAINER'
+        # polaris_artifactToUpload: '/path/to/container.tar.gz'
+        # polaris_container_name: 'unique-container-name' # use for filtering
+
+        ### PULL REQUEST COMMENTS: Uncomment below to enable
+        # polaris_prComment_enabled: true
+        # github_token: ${{ secrets.GITHUB_TOKEN }} # Mandatory when PR comments is enabled
+
+        ### FIX PR: Uncomment below to enable
+        # polaris_fixpr_enabled: true
+        # github_token: ${{ secrets.GITHUB_TOKEN }} # Mandatory when polaris_fixpr_enabled is set to 'true'
+
+        ### GitHub Issues
+        # polaris_externalIssues_create: true
+        # github_token: ${{ secrets.GITHUB_TOKEN }} # Mandatory when polaris_externalIssues_create is set to 'true'
+
+        ### SARIF report parameters
+        # polaris_reports_sarif_create: true
+        # polaris_upload_sarif_report: true
+
+        ### Signature scan
+        # polaris_test_sca_type: "SCA-SIGNATURE"
+
+        ### Mark build status if policy violating issues are found
+        ### 'failure' enforces the security gate (breaks the pipeline on violations)
+        ### 'success' reports findings without breaking the build
         mark_build_status: 'failure'
+
+    ### Uncomment below configuration to add custom logic based on return status
+    # - name: cmdLine
+    #   id: cmdLine
+    #   run: |
+    #     EXIT_CODE=${{ steps.polaris-scan.outputs.status }}
+    #     echo "Polaris Scan exit code - $EXIT_CODE"
