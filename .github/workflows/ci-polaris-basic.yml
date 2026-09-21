@@ -9,10 +9,7 @@ on:
 
 env:
   BRIDGE_POLARIS_WAITFORSCAN: true
-  # Redirects all temp-file writes from the tiny /tmp partition
-  # to the larger /var/tmp partition (avoids ENOSPC errors).
   TMPDIR: /var/tmp
-  # Android SDK is pre-installed on the self-hosted runner at /var/android-sdk.
   ANDROID_SDK_ROOT: /var/android-sdk
   ANDROID_HOME: /var/android-sdk
 
@@ -29,31 +26,37 @@ jobs:
         distribution: "temurin"
         java-version: "17"
 
-    # Gradle 7.6.4 is pre-installed on the self-hosted runner.
-    # Adjust the path if Gradle is installed elsewhere.
     - name: Add Gradle to PATH
       run: echo "/opt/gradle/gradle-7.6.4/bin" >> "$GITHUB_PATH"
 
-    # Android SDK command-line tools and platform-tools are pre-installed
-    # on the runner at /var/android-sdk.
-    # Comment out this step if your project is not Android.
     - name: Configure Android SDK PATH
       run: |
         echo "/var/android-sdk/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
         echo "/var/android-sdk/platform-tools" >> "$GITHUB_PATH"
 
-    # local.properties is gitignored, so create it before the build.
-    # Adjust the path to match your project's root directory.
-    # Comment out this step if your project is not Android.
     - name: Write local.properties
       run: |
         echo "sdk.dir=/var/android-sdk" > DamnVulnerableBank/local.properties
         cat DamnVulnerableBank/local.properties
 
-    # Install Python dependencies for SCA.
-    # Pinning setuptools<71.0.0 avoids the Python 3.8 incompatibility that
-    # caused "importlib_metadata has no attribute EntryPoints".
-    # Comment out this step if your project has no requirements.txt.
+    # Coverity's default build command runs `gradle clean build testClasses`.
+    # The Android Gradle Plugin does not create a `testClasses` task.
+    # This stub makes that task exist so the build succeeds.
+    - name: Add testClasses Task Stub
+      run: |
+        cat >> DamnVulnerableBank/app/build.gradle << 'EOF'
+
+        // Stub task for Coverity SAST — the Android Gradle Plugin does not
+        // create a `testClasses` task, but Coverity's default build command
+        // expects one. This empty task satisfies that requirement.
+        tasks.register("testClasses") {
+            doLast {
+                println "Coverity stub: testClasses invoked"
+            }
+        }
+        EOF
+        tail -20 DamnVulnerableBank/app/build.gradle
+
     - name: Install Python dependencies
       run: |
         python -m pip install --upgrade pip
@@ -68,16 +71,13 @@ jobs:
         polaris_server_url: ${{ vars.POLARIS_SERVER_URL }}
         polaris_access_token: ${{ secrets.POLARIS_ACCESS_TOKEN }}
         polaris_assessment_types: "SCA,SAST"
-
         blackducksca_scan_failure_severities: 'BLOCKER,CRITICAL,HIGH'
-
         polaris_waitForScan: true
 
         ### SCANNING: Optional fields
         polaris_application_name: ${{ github.event.repository.name }}
         polaris_project_name: ${{ github.event.repository.name }}
         polaris_branch_name: "develop"
-        # polaris_branch_parent_name: ""
 
         ### Binary scan: requires polaris_assessment_types set to SCA only
         # polaris_test_sca_type: "SCA-BINARY"
@@ -86,44 +86,26 @@ jobs:
         ### SCA container scan: requires polaris_assessment_types set to SCA only
         # polaris_test_sca_type: 'SCA-CONTAINER'
         # polaris_artifactToUpload: '/path/to/container.tar.gz'
-        # polaris_container_name: 'unique-container-name' # use for filtering
-
-        ### SAST scan type: uncomment to override the default (sastFull)
-        # polaris_test_sast_type: "SAST"
+        # polaris_container_name: 'unique-container-name'
 
         ### Signature scan
         # polaris_test_sca_type: "SCA-SIGNATURE"
 
-        ### PULL REQUEST COMMENTS: Uncomment below to enable
+        ### PULL REQUEST COMMENTS
         # polaris_prComment_enabled: true
-        # polaris_prComment_severities: "CRITICAL,HIGH"
-        # github_token: ${{ secrets.GITHUB_TOKEN }} # Mandatory when PR comments is enabled
+        # github_token: ${{ secrets.GITHUB_TOKEN }}
 
-        ### FIX PR: Uncomment below to enable
+        ### FIX PR
         # polaris_fixpr_enabled: true
-        # github_token: ${{ secrets.GITHUB_TOKEN }} # Mandatory when polaris_fixpr_enabled is set to 'true'
+        # github_token: ${{ secrets.GITHUB_TOKEN }}
 
         ### GitHub Issues
         # polaris_externalIssues_create: true
-        # github_token: ${{ secrets.GITHUB_TOKEN }} # Mandatory when polaris_externalIssues_create is set to 'true'
+        # github_token: ${{ secrets.GITHUB_TOKEN }}
 
         ### SARIF report parameters
         # polaris_reports_sarif_create: true
-        # polaris_reports_sarif_file_path: ""
-        # polaris_reports_sarif_severities: ""
         # polaris_upload_sarif_report: true
 
-        ### Triage (mark issues as acknowledged in Polaris)
-        # polaris_triage: ""
-
         ### Mark build status if policy violating issues are found
-        ### 'failure' enforces the security gate (breaks the pipeline)
-        ### 'success' reports findings without breaking the build
         mark_build_status: 'failure'
-
-    ### Uncomment below configuration to add custom logic based on return status
-    # - name: cmdLine
-    #   id: cmdLine
-    #   run: |
-    #     EXIT_CODE=${{ steps.polaris-scan.outputs.status }}
-    #     echo "Polaris Scan exit code - $EXIT_CODE"
