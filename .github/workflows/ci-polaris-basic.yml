@@ -22,16 +22,16 @@ jobs:
         java-version: "17"
 
     # Fixes the "Build command not found. 'gradle'" error from Coverity.
-    # $GITHUB_PATH adds the directory to the PATH for all subsequent steps in the job.
     - name: Add Gradle to PATH
       run: echo "/opt/gradle/gradle-7.6.4/bin" >> "$GITHUB_PATH"
 
-    # Fixes the "FAILURE_ACCURACY_NOT_MET" error from Detect.
-    # Installs packages from requirements.txt so the PIP inspector can resolve them.
+    # Fixes the "importlib_metadata has no attribute 'EntryPoints'" error
+    # and the "FAILURE_ACCURACY_NOT_MET" error from Detect.
     - name: Install Python dependencies
-      uses: py-actions/py-dependency-install@v4
-      with:
-        path: "requirements.txt"
+      run: |
+        python -m pip install --upgrade pip
+        python -m pip install "setuptools<71.0.0" wheel
+        python -m pip install -r requirements.txt
 
     - name: Polaris Scan
       id: polaris-scan
